@@ -13,7 +13,11 @@ Advanced hierarchical machine learning system for predicting soil microbes in **
 - **High Accuracy**: F1 scores of 0.062-0.067 (much better than flat classification)
 - **Multi-Level Predictions**: Get predictions at all taxonomic levels simultaneously
 - **Confidence Scores**: High/Medium/Low confidence indicators
-- **PDF Reports**: Downloadable reports with detailed predictions
+- **Professional PDF Reports**: Comprehensive scientific reports with:
+  - 7 dynamic visualizations (soil radar chart, confidence distribution, taxonomic bar charts)
+  - AI-powered explanations using Ollama (Mistral 7B)
+  - Executive summary, soil analysis, model metrics, methodology sections
+  - Professional scientific styling and formatting
 
 ---
 
@@ -34,7 +38,19 @@ This will:
 - Save models to `models/` directory
 - Takes ~5-10 minutes
 
-### 3. Run the Application
+### 3. Setup Ollama (Optional - for AI explanations)
+```bash
+# Install Ollama
+brew install ollama
+
+# Pull Mistral model
+ollama pull mistral:7b
+
+# Start Ollama service (runs in background)
+ollama serve
+```
+
+### 4. Run the Application
 ```bash
 python3 app.py
 ```
@@ -80,12 +96,12 @@ Open: http://localhost:5002
 
 ### API Usage
 ```bash
-# Mode 1: Lat/Lon
+# Mode 1: Lat/Lon with AI explanations
 curl -X POST http://localhost:5002/predict \
   -H "Content-Type: application/json" \
-  -d '{"latitude": 22.793497, "longitude": 73.62895}'
+  -d '{"latitude": 22.793497, "longitude": 73.62895, "enable_ai": true}'
 
-# Mode 2: Manual Soil
+# Mode 2: Manual Soil without AI explanations
 curl -X POST http://localhost:5002/predict \
   -H "Content-Type: application/json" \
   -d '{
@@ -93,7 +109,8 @@ curl -X POST http://localhost:5002/predict \
       "COARSE": 10, "SAND": 45, "SILT": 30, "CLAY": 25,
       "ORG_CARBON": 12, "PH_WATER": 6.5, 
       "CEC_CLAY": 55, "BULK": 1.4
-    }
+    },
+    "enable_ai": false
   }'
 ```
 
@@ -217,7 +234,8 @@ Top features across all models:
 - **Data**: pandas 2.1.4, numpy 1.26.4
 - **GIS**: rasterio 1.3.9, geopandas 0.12.2
 - **Web**: Flask 2.0.1
-- **Reports**: reportlab, matplotlib 3.8.2
+- **Reports**: reportlab, matplotlib 3.8.2, seaborn 0.13.2
+- **AI**: Ollama (Mistral 7B for offline explanations)
 
 ### System Requirements
 - **RAM**: 8GB minimum (16GB recommended)
@@ -229,6 +247,9 @@ Top features across all models:
 - **Training Time**: 5-10 minutes
 - **Prediction Time**: <1 second per location
 - **Model Loading**: ~2 seconds on startup
+- **Report Generation**: 
+  - Without AI: ~10-15 seconds
+  - With AI explanations: ~3-4 minutes (Mistral 7B)
 
 ---
 
@@ -249,6 +270,17 @@ Download required datasets:
 ```bash
 # Change port in app.py (last line)
 app.run(debug=True, port=5003)  # Use different port
+```
+
+### AI explanations not working?
+```bash
+# Check if Ollama is running
+curl http://localhost:11434/api/tags
+
+# Start Ollama service
+ollama serve
+
+# Or disable AI in the UI (uncheck the toggle)
 ```
 
 ---
