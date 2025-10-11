@@ -12,7 +12,7 @@ from pathlib import Path
 import os
 import joblib
 import rasterio
-from report_generator import generate_microbe_report
+from report_generator import generate_hierarchical_report
 
 app = Flask(__name__)
 
@@ -218,7 +218,19 @@ def predict():
         }
         
         # Generate report
-        report_path = generate_hierarchical_report(smu_id_value, feature_values, predictions_by_level)
+        location_info = {
+            'latitude': feature_values.get('latitude', 0),
+            'longitude': feature_values.get('longitude', 0)
+        }
+        enable_ai = data.get('enable_ai', True)  # Get AI toggle state from request
+        report_path = generate_hierarchical_report(
+            smu_id_value, 
+            feature_values, 
+            predictions_by_level,
+            location_info,
+            model_metadata['metrics'],
+            enable_ai
+        )
         response['report_path'] = report_path
         
         return jsonify(response), 200
@@ -229,33 +241,7 @@ def predict():
         traceback.print_exc()
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-def generate_hierarchical_report(smu_id, soil_chars, predictions_by_level):
-    try:
-        output_filename = "hierarchical_report.pdf"
-        output_path = os.path.join(os.getcwd(), output_filename)
-        
-        # Flatten predictions for report
-        all_predictions = []
-        for level, preds in predictions_by_level.items():
-            for pred in preds:
-                all_predictions.append({
-                    'name': f"{pred['name']} ({level})",
-                    'probability': pred['probability'],
-                    'explanation': f"Predicted at {level} level with {pred['confidence']} confidence"
-                })
-        
-        microbe_data = {
-            "smu_id": smu_id,
-            "soil_characteristics": {k: v for k, v in soil_chars.items() if k in SOIL_FEATURES_INFO}
-        }
-        
-        explanation = f"Hierarchical prediction at {len(predictions_by_level)} taxonomic levels"
-        
-        generate_microbe_report(output_path, microbe_data, all_predictions, explanation)
-        return output_filename
-    except Exception as e:
-        print(f"Report error: {str(e)}")
-        return None
+# Report generation now handled by report_generator.py
 
 @app.route('/download_report/<filename>')
 def download_report(filename):
