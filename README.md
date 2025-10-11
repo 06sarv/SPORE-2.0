@@ -21,6 +21,20 @@ Advanced hierarchical machine learning system for predicting soil microbes in **
 
 ---
 
+## Screenshots
+
+### Lat/Lon Lookup Mode
+Automatic soil data retrieval with hierarchical predictions and AI-powered explanations.
+
+![Lat/Lon Mode](static/download.png)
+
+### Manual Soil Characteristics Mode
+Direct input of soil properties for custom predictions.
+
+![Manual Mode](static/Screenshot%202025-10-11%20at%2021.30.12.png)
+
+---
+
 ## Quick Start
 
 ### 1. Install Dependencies
