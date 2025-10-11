@@ -206,6 +206,7 @@ Top features across all models:
 - **Region**: India only (countryCode: IN)
 - **Content**: 96,697 bacteria occurrences
 - **Species**: 5,261 unique species
+- **Citation**: GBIF.org (2 October 2025) GBIF Occurrence Download https://doi.org/10.15468/dl.z3ysfj
 
 ---
 
