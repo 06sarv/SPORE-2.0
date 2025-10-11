@@ -3,12 +3,18 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*.so
+.Python
+venv/
+env/
+ENV/
 
 # Environment
 .env
 .env.*
 
-# Data
+# Data (large files)
 /data/
 *.dbf
 *.shp
@@ -16,6 +22,22 @@ __pycache__/
 *.prj
 *.cpg
 *.csv
+*.tif
+*.bil
+*.hdr
+
+# Models (large files)
+/models/*.pkl
+/models/*.gguf
+
+# Reports
+*.pdf
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
