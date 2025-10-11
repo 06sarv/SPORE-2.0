@@ -81,7 +81,7 @@ SOIL_FEATURES_INFO = {
 
 @app.route('/')
 def home():
-    return render_template('index_hierarchical.html', 
+    return render_template('index.html', 
                          features=SOIL_FEATURES_INFO,
                          model_info=model_metadata if models_loaded else None)
 
