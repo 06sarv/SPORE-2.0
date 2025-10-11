@@ -287,12 +287,6 @@ MIT License - See LICENSE file
 
 ---
 
-## Author
-
-**Sarvagna**
-
----
-
 ## Acknowledgments
 
 - FAO for HWSD v2.0 soil database
@@ -303,5 +297,5 @@ MIT License - See LICENSE file
 ---
 
 <div align="center">
-  <strong>SPORE - Predicting soil microbes with science and ML</strong>
-</div>
+  <strong>Made with ❤️ by Sarvagna</strong>
+</div> 
