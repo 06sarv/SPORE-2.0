@@ -1,44 +1,27 @@
+# Data files (too large)
+data/
+*.bil
+*.csv
+*.hdr
+
+# Models (retrain locally)
+models/*.pkl
+
 # Python
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-*.py[cod]
-*.so
-.Python
-venv/
-env/
-ENV/
-
-# Environment
 .env
-.env.*
-
-# Data (large files)
-/data/
-*.dbf
-*.shp
-*.shx
-*.prj
-*.cpg
-*.csv
-*.tif
-*.bil
-*.hdr
-
-# Models (large files)
-/models/*.pkl
-/models/*.gguf
+venv/
 
 # Reports
-*.pdf
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+SPORE_Report_*.pdf
 
 # OS
 .DS_Store
-Thumbs.db 
+
+# Temp
+temp_*.png
+
+# Large LLM models
+*.gguf

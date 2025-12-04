@@ -515,6 +515,7 @@
 
     <script>
         let currentMode = 'latlon';
+        let lastPredictionData = null;  // Store for report generation
 
         function switchMode(mode) {
             currentMode = mode;
@@ -527,6 +528,38 @@
             } else {
                 document.querySelector('.mode-btn:last-child').classList.add('active');
                 document.getElementById('manual-mode').classList.add('active');
+            }
+        }
+
+        async function downloadReport() {
+            if (!lastPredictionData) {
+                alert('Please make a prediction first');
+                return;
+            }
+            
+            const btn = event.target;
+            btn.textContent = 'Generating Report...';
+            btn.style.pointerEvents = 'none';
+            
+            try {
+                const response = await fetch('/generate_report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(lastPredictionData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.report_file) {
+                    window.location.href = `/download_report/${result.report_file}`;
+                } else {
+                    alert('Error generating report: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error generating report: ' + error.message);
+            } finally {
+                btn.textContent = 'Download Full Report';
+                btn.style.pointerEvents = 'auto';
             }
         }
 
@@ -544,21 +577,16 @@
             resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
             try {
-                let requestBody = {};
+                let requestBody = { mode: currentMode };
 
                 if (currentMode === 'latlon') {
-                    requestBody = {
-                        latitude: parseFloat(document.getElementById('latitude').value),
-                        longitude: parseFloat(document.getElementById('longitude').value)
-                    };
+                    requestBody.latitude = parseFloat(document.getElementById('latitude').value);
+                    requestBody.longitude = parseFloat(document.getElementById('longitude').value);
                 } else {
-                    const soilChars = {};
                     {% for key in features.keys() %}
                     const val_{{ key }} = document.getElementById('soil_{{ key }}').value;
-                    if (val_{{ key }}) soilChars['{{ key }}'] = parseFloat(val_{{ key }});
+                    if (val_{{ key }}) requestBody['{{ key }}'] = parseFloat(val_{{ key }});
                     {% endfor %}
-                    
-                    requestBody = { soil_characteristics: soilChars };
                     
                     const lat = document.getElementById('manual_latitude').value;
                     const lon = document.getElementById('manual_longitude').value;
@@ -566,7 +594,6 @@
                     if (lon) requestBody.longitude = parseFloat(lon);
                 }
 
-                // Add AI toggle state
                 requestBody.enable_ai = document.getElementById('ai-toggle').checked;
 
                 const response = await fetch('/predict', {
@@ -578,23 +605,30 @@
                 const result = await response.json();
                 predictionsDiv.innerHTML = '';
 
-                if (response.ok) {
+                if (response.ok && result.success) {
+                    // Store for report generation
+                    lastPredictionData = {
+                        predictions: result.predictions,
+                        soil_properties: result.soil_properties,
+                        location: result.location,
+                        smu_id: result.smu_id
+                    };
+                    
                     const levels = ['phylum', 'class', 'order', 'family', 'genus'];
                     
                     for (const level of levels) {
-                        if (result.predictions_by_level[level]) {
+                        if (result.predictions[level]) {
                             const levelDiv = document.createElement('div');
                             levelDiv.className = 'taxonomy-level';
                             
-                            const metrics = result.model_info.metrics[level];
                             levelDiv.innerHTML = `
                                 <div class="level-header">
-                                    <span>${level}</span>
-                                    <span class="level-meta">${metrics.n_classes} classes · F1: ${metrics.f1_score.toFixed(3)}</span>
+                                    <span>${level.charAt(0).toUpperCase() + level.slice(1)}</span>
+                                    <span class="level-meta">Top 5 predictions</span>
                                 </div>
                             `;
                             
-                            result.predictions_by_level[level].forEach(pred => {
+                            result.predictions[level].forEach(pred => {
                                 const predDiv = document.createElement('div');
                                 predDiv.className = 'prediction-item';
                                 predDiv.innerHTML = `
@@ -616,17 +650,18 @@
                         }
                     }
                     
-                    if (result.report_path) {
-                        const reportLink = document.createElement('a');
-                        reportLink.href = `/download_report/${result.report_path}`;
-                        reportLink.textContent = 'Download Full Report';
-                        reportLink.className = 'download-btn';
-                        reportLink.style.display = 'block';
-                        reportLink.style.textAlign = 'center';
-                        predictionsDiv.appendChild(reportLink);
-                    }
+                    // Add download button
+                    const reportBtn = document.createElement('button');
+                    reportBtn.textContent = 'Download Full Report';
+                    reportBtn.className = 'download-btn';
+                    reportBtn.style.display = 'block';
+                    reportBtn.style.margin = '30px auto';
+                    reportBtn.style.width = 'auto';
+                    reportBtn.onclick = downloadReport;
+                    predictionsDiv.appendChild(reportBtn);
+                    
                 } else {
-                    predictionsDiv.innerHTML = `<div class="error">Error: ${result.error}</div>`;
+                    predictionsDiv.innerHTML = `<div class="error">Error: ${result.error || 'Unknown error'}</div>`;
                 }
             } catch (error) {
                 console.error('Error:', error);

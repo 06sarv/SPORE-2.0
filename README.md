@@ -10,28 +10,28 @@ Advanced hierarchical machine learning system for predicting soil microbes in **
 - **Dual Input Modes**: 
   - Lat/Lon lookup (automatic soil data retrieval)
   - Manual soil characteristics input
-- **High Accuracy**: F1 scores of 0.062-0.067 (much better than flat classification)
+- **High Accuracy**: F1 scores up to 0.435 (6.5x improvement over baseline)
 - **Multi-Level Predictions**: Get predictions at all taxonomic levels simultaneously
 - **Confidence Scores**: High/Medium/Low confidence indicators
 - **Professional PDF Reports**: Comprehensive scientific reports with:
-  - 7 dynamic visualizations (soil radar chart, confidence distribution, taxonomic bar charts)
+  - Dynamic visualizations
   - AI-powered explanations using Ollama (Mistral 7B)
-  - Executive summary, soil analysis, model metrics, methodology sections
+  - Executive summary, soil analysis, methodology sections
   - Professional scientific styling and formatting
 
 ---
 
-## Screenshots
+## Model Performance
 
-### Lat/Lon Lookup Mode
-Automatic soil data retrieval with hierarchical predictions and AI-powered explanations.
+| Taxonomic Level | Classes | F1 Score | Accuracy |
+|----------------|---------|----------|----------|
+| **Phylum** | 21 | **0.435** | 52.6% |
+| **Class** | 33 | **0.336** | 42.3% |
+| **Order** | 74 | **0.209** | 26.8% |
+| **Family** | 125 | **0.173** | 23.2% |
+| **Genus** | 193 | **0.155** | 20.8% |
 
-![Lat/Lon Mode](static/Screenshot%202025-10-11%20at%2021.30.12.png)
-
-### Manual Soil Characteristics Mode
-Direct input of soil properties for custom predictions.
-
-![Manual Mode](static/Screenshot%202025-10-11%20at%2021.38.42.png)
+**Why hierarchical + XGBoost is better**: Reduces label dimensionality, handles class imbalance, and provides interpretable taxonomic predictions.
 
 ---
 
@@ -71,20 +71,6 @@ python3 app.py
 Open: http://localhost:5002
 
 **Note**: Predictions are currently available for locations within India only.
-
----
-
-## Model Performance
-
-| Taxonomic Level | Classes | F1 Score | Accuracy |
-|----------------|---------|----------|----------|
-| **Phylum** | 36 | 0.067 | 0.051 |
-| **Class** | 70 | 0.063 | 0.045 |
-| **Order** | 176 | 0.041 | 0.032 |
-| **Family** | 316 | 0.038 | 0.033 |
-| **Genus** | 294 | 0.062 | 0.064 |
-
-**Why hierarchical is better**: Reduces label dimensionality, improves F1 scores, and provides interpretable taxonomic predictions.
 
 ---
 
@@ -244,11 +230,10 @@ Top features across all models:
 ## Technical Details
 
 ### Dependencies
-- **ML**: scikit-learn 1.3.2, joblib 1.3.2
-- **Data**: pandas 2.1.4, numpy 1.26.4
-- **GIS**: rasterio 1.3.9, geopandas 0.12.2
-- **Web**: Flask 2.0.1
-- **Reports**: reportlab, matplotlib 3.8.2, seaborn 0.13.2
+- **ML**: XGBoost 2.0+, scikit-learn 1.7+, joblib
+- **Data**: pandas, numpy, rasterio
+- **Web**: Flask 2.0+
+- **Reports**: reportlab, matplotlib, seaborn
 - **AI**: Ollama (Mistral 7B for offline explanations)
 
 ### System Requirements
@@ -345,4 +330,4 @@ MIT License - See LICENSE file
 
 <div align="center">
   <strong>Made with ❤️ by Sarvagna</strong>
-</div> 
+</div>

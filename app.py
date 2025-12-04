@@ -88,158 +88,122 @@ def home():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        if not models_loaded:
-            return jsonify({'error': 'Models not loaded. Train models first.'}), 500
+        data = request.json
+        mode = data.get('mode', 'latlon')
+        print(f"Mode: {mode}")
         
-        data = request.get_json()
-        latitude = data.get('latitude')
-        longitude = data.get('longitude')
-        soil_characteristics = data.get('soil_characteristics', {})
+        if mode == 'latlon':
+            lat = float(data['latitude'])
+            lon = float(data['longitude'])
+            
+            # Get SMU ID from raster
+            row, col = hwsd_raster.index(lon, lat)
+            smu_id = int(hwsd_raster.read(1, window=((row, row+1), (col, col+1)))[0, 0])
+            
+            # Get soil properties
+            soil_row = soil_data[soil_data['HWSD2_SMU_ID'] == smu_id].iloc[0]
+            
+            feature_values = {
+                'COARSE': float(soil_row.get('COARSE', 0)),
+                'SAND': float(soil_row.get('SAND', 33)),
+                'SILT': float(soil_row.get('SILT', 33)),
+                'CLAY': float(soil_row.get('CLAY', 33)),
+                'ORG_CARBON': float(soil_row.get('ORG_CARBON', 10)),
+                'PH_WATER': float(soil_row.get('PH_WATER', 7)),
+                'CEC_CLAY': float(soil_row.get('CEC_CLAY', 20)),
+                'BULK': float(soil_row.get('BULK', 1.3)),
+            }
+            
+            location_info = {'latitude': lat, 'longitude': lon, 'smu_id': smu_id}
+            
+        else:  # manual soil input
+            feature_values = {
+                'COARSE': float(data.get('coarse', 0)),
+                'SAND': float(data.get('sand', 33)),
+                'SILT': float(data.get('silt', 33)),
+                'CLAY': float(data.get('clay', 33)),
+                'ORG_CARBON': float(data.get('org_carbon', 10)),
+                'PH_WATER': float(data.get('ph_water', 7)),
+                'CEC_CLAY': float(data.get('cec_clay', 20)),
+                'BULK': float(data.get('bulk', 1.3)),
+            }
+            
+            lat = float(data.get('latitude', 20.0))
+            lon = float(data.get('longitude', 78.0))
+            location_info = {'latitude': lat, 'longitude': lon, 'smu_id': 'Manual Input'}
+            smu_id = 'Manual'
         
-        # MODE 1: Individual soil characteristics provided
-        if soil_characteristics and len(soil_characteristics) > 0:
-            print(f"Mode: Individual soil characteristics")
-            
-            # Validate all required features
-            base_features = ['COARSE', 'SAND', 'SILT', 'CLAY', 'ORG_CARBON', 'PH_WATER', 'CEC_CLAY', 'BULK']
-            missing = [f for f in base_features if f not in soil_characteristics]
-            if missing:
-                return jsonify({'error': f'Missing soil characteristics: {", ".join(missing)}'}), 400
-            
-            # Use provided characteristics
-            feature_values = {k: float(v) for k, v in soil_characteristics.items()}
-            
-            # Add spatial features (use defaults if not provided)
-            feature_values['latitude'] = float(latitude) if latitude else 20.5937
-            feature_values['longitude'] = float(longitude) if longitude else 78.9629
-            
-            smu_id_value = "User-provided"
-            
-        # MODE 2: Lat/Lon provided - lookup soil data
-        elif latitude is not None and longitude is not None:
-            print(f"Mode: Lat/Lon lookup")
-            latitude = float(latitude)
-            longitude = float(longitude)
-            
-            # Get SMU_ID from raster
-            smu_id_value = None
-            try:
-                for val in hwsd_raster.sample([(longitude, latitude)]):
-                    smu_id_value = val[0]
-                    break
-                
-                if smu_id_value is None or smu_id_value == hwsd_raster.nodata:
-                    return jsonify({'error': 'No soil data at coordinates'}), 404
-                
-                smu_id_value = int(smu_id_value)
-            except Exception as e:
-                return jsonify({'error': f'Raster error: {str(e)}'}), 500
-            
-            # Get soil characteristics from database
-            smu_data_row = soil_data[soil_data['HWSD2_SMU_ID'] == smu_id_value]
-            if smu_data_row.empty:
-                return jsonify({'error': f'No soil data for SMU_ID: {smu_id_value}'}), 404
-            
-            soil_chars = smu_data_row.iloc[0]
-            
-            # Check for missing features
-            base_features = ['COARSE', 'SAND', 'SILT', 'CLAY', 'ORG_CARBON', 'PH_WATER', 'CEC_CLAY', 'BULK']
-            for feature in base_features:
-                if pd.isna(soil_chars[feature]):
-                    return jsonify({'error': f'Missing soil feature: {feature}'}), 404
-            
-            # Create feature dict
-            feature_values = {f: soil_chars[f] for f in base_features}
-            feature_values['latitude'] = latitude
-            feature_values['longitude'] = longitude
-            
-        else:
-            return jsonify({'error': 'Provide either lat/lon OR all soil characteristics'}), 400
-        
-        # Add derived features
+        # Compute derived features
         feature_values['sand_clay_ratio'] = feature_values['SAND'] / (feature_values['CLAY'] + 1)
         feature_values['silt_clay_ratio'] = feature_values['SILT'] / (feature_values['CLAY'] + 1)
-        feature_values['texture_index'] = feature_values['SAND'] + feature_values['SILT'] - feature_values['CLAY']
+        feature_values['texture_index'] = (feature_values['SAND'] * 0.5 + feature_values['SILT'] * 0.3 + feature_values['CLAY'] * 0.2) / 100
+        feature_values['carbon_ph_interaction'] = feature_values['ORG_CARBON'] * feature_values['PH_WATER']
+        feature_values['ph_squared'] = feature_values['PH_WATER'] ** 2
+        feature_values['lat_bin'] = round(lat * 2) / 2
+        feature_values['lon_bin'] = round(lon * 2) / 2
         
-        # Create input array
+        # Create feature array in correct order
         X_input = np.array([[feature_values[feat] for feat in feature_names]])
-        X_scaled = scaler.transform(X_input)
+        X_input_df = pd.DataFrame(X_input, columns=feature_names)  # Add this line
+        X_scaled = scaler.transform(X_input_df)  # Change this line
         
-        # Hierarchical predictions
+        # Get predictions for each taxonomic level
         predictions_by_level = {}
-        
-        for level in model_metadata['taxonomic_levels']:
+        for level in ['phylum', 'class', 'order', 'family', 'genus']:
             model = hierarchical_models[level]
             encoder = hierarchical_encoders[level]
             
-            # Get prediction probabilities
-            proba = model.predict_proba(X_scaled)[0]
-            pred_class = model.predict(X_scaled)[0]
+            probs = model.predict_proba(X_scaled)[0]
+            top_indices = np.argsort(probs)[::-1][:5]
             
-            # Get top 5 predictions
-            top_indices = np.argsort(proba)[::-1][:5]
-            
-            level_predictions = []
-            for idx in top_indices:
-                taxon_name = encoder.classes_[idx]
-                probability = float(proba[idx])
-                
-                if probability > 0.05:  # Only show predictions > 5%
-                    level_predictions.append({
-                        'name': taxon_name,
-                        'probability': probability,
-                        'confidence': 'high' if probability > 0.5 else 'medium' if probability > 0.2 else 'low'
-                    })
-            
-            if level_predictions:
-                predictions_by_level[level] = level_predictions
+            predictions_by_level[level] = [
+                {
+                    'name': encoder.classes_[i],
+                    'probability': float(probs[i]),
+                    'confidence': 'high' if probs[i] > 0.5 else 'medium' if probs[i] > 0.2 else 'low'
+                }
+                for i in top_indices
+            ]
         
-        if not predictions_by_level:
-            return jsonify({'error': 'No predictions with sufficient confidence'}), 404
-        
-        # Format response (ensure all values are JSON serializable)
-        response = {
-            'predictions_by_level': predictions_by_level,
-            'soil_characteristics': {k: float(round(v, 2)) for k, v in feature_values.items() if k in base_features},
-            'location': {
-                'latitude': float(feature_values['latitude']),
-                'longitude': float(feature_values['longitude']),
-                'smu_id': str(smu_id_value)
-            },
-            'model_info': {
-                'type': 'hierarchical',
-                'levels': list(predictions_by_level.keys()),
-                'metrics': {level: {
-                    'f1_score': float(model_metadata['metrics'][level]['f1_score']),
-                    'accuracy': float(model_metadata['metrics'][level]['accuracy']),
-                    'n_classes': int(model_metadata['metrics'][level]['n_classes'])
-                } for level in predictions_by_level.keys()}
-            }
-        }
-        
-        # Generate report
-        location_info = {
-            'latitude': feature_values.get('latitude', 0),
-            'longitude': feature_values.get('longitude', 0)
-        }
-        enable_ai = data.get('enable_ai', True)  # Get AI toggle state from request
-        report_path = generate_hierarchical_report(
-            smu_id_value, 
-            feature_values, 
-            predictions_by_level,
-            location_info,
-            model_metadata['metrics'],
-            enable_ai
-        )
-        response['report_path'] = report_path
-        
-        return jsonify(response), 200
+        # DON'T generate report here - only on download request
+        return jsonify({
+            'success': True,
+            'predictions': predictions_by_level,
+            'soil_properties': feature_values,
+            'location': location_info,
+            'smu_id': smu_id
+        })
         
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/generate_report', methods=['POST'])
+def generate_report():
+    """Generate report only when user requests it"""
+    try:
+        data = request.json
+        
+        report_filename = generate_hierarchical_report(
+            smu_id=data.get('smu_id', 'Unknown'),
+            soil_chars=data.get('soil_properties', {}),
+            predictions_by_level=data.get('predictions', {}),
+            location_info=data.get('location', {}),
+            model_metrics=model_metadata.get('metrics', {}),
+            enable_ai=True
+        )
+        
+        return jsonify({
+            'success': True,
+            'report_file': report_filename
+        })
+        
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Report generation now handled by report_generator.py
 
