@@ -531,13 +531,13 @@
             }
         }
 
-        async function downloadReport() {
+        async function downloadReport(event) {
             if (!lastPredictionData) {
                 alert('Please make a prediction first');
                 return;
             }
             
-            const btn = event.target;
+            const btn = event?.target;
             btn.textContent = 'Generating Report...';
             btn.style.pointerEvents = 'none';
             
@@ -611,7 +611,8 @@
                         predictions: result.predictions,
                         soil_properties: result.soil_properties,
                         location: result.location,
-                        smu_id: result.smu_id
+                        smu_id: result.smu_id,
+                        enable_ai: requestBody.enable_ai
                     };
                     
                     const levels = ['phylum', 'class', 'order', 'family', 'genus'];

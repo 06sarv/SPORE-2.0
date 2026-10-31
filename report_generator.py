@@ -1,24 +1,29 @@
 """
-Professional Scientific Report Generator for SPORE
-Generates comprehensive PDF reports with visualizations and AI-powered explanations
-Uses offline GPT4All for intelligent insights
+Professional scientific report generator for SPORE.
+Builds a concise PDF summary with charts, model metadata, and optional
+offline AI interpretation through Ollama when available.
 """
 
+import os
+from pathlib import Path
+from datetime import datetime
+
+os.environ.setdefault('MPLCONFIGDIR', '/tmp/spore-mplconfig')
+os.environ.setdefault('XDG_CACHE_HOME', '/tmp/spore-cache')
+Path(os.environ['MPLCONFIGDIR']).mkdir(parents=True, exist_ok=True)
+Path(os.environ['XDG_CACHE_HOME']).mkdir(parents=True, exist_ok=True)
+
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.pyplot as plt
+import seaborn as sns
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
-import seaborn as sns
-from datetime import datetime
-import os
-import numpy as np
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 import requests
-import json
 
 # Initialize Ollama LLM (offline, much faster than GPT4All)
 # Uses Ollama API with llama3 - keeps model loaded in memory
@@ -58,15 +63,11 @@ def generate_ai_explanation(soil_data, predictions_summary, taxonomic_level):
         sand = soil_data.get('SAND', 33)
         clay = soil_data.get('CLAY', 33)
         
-        prompt = f"""As a soil microbiologist, provide a professional scientific explanation (2-3 sentences, ~50 words) for why {predictions_summary} bacteria are predicted in this soil environment:
+        prompt = f"""Write a brief, cautious, model-generated hypothesis about these ranked taxa: {predictions_summary}.
 
-Soil Properties:
-- pH: {ph:.1f}
-- Organic Carbon: {oc:.1f} g/kg
-- Sand: {sand:.0f}%, Clay: {clay:.0f}%
-- Taxonomic Level: {taxonomic_level}
+Soil properties: pH {ph:.1f}; organic carbon {oc:.1f} g/kg; sand {sand:.0f}%; clay {clay:.0f}%. Taxonomic level: {taxonomic_level}.
 
-Focus on specific soil-microbe ecological relationships, nutrient cycling, and environmental adaptations."""
+Use 2 short sentences. Explain that the list is a model ranking based on these inputs. Do not claim the taxa were detected or are present, and do not assert taxon-specific ecology, prevalence, or causal mechanisms without supporting reference data. State that lab sampling is needed to verify presence."""
 
         response = requests.post(
             OLLAMA_API_URL,
@@ -82,7 +83,7 @@ Focus on specific soil-microbe ecological relationships, nutrient cycling, and e
                     "top_p": 0.9
                 }
             },
-            timeout=40
+            timeout=120
         )
         
         if response.status_code == 200:
@@ -106,6 +107,13 @@ Focus on specific soil-microbe ecological relationships, nutrient cycling, and e
     except Exception as e:
         return None
 
+def _format_coord(value, default='N/A'):
+    try:
+        return f"{float(value):.4f}"
+    except (TypeError, ValueError):
+        return default
+
+
 def create_compact_predictions_chart(predictions_by_level, output_path):
     """Create compact multi-level predictions chart"""
     fig, axes = plt.subplots(1, 3, figsize=(10, 3))
@@ -126,13 +134,23 @@ def create_compact_predictions_chart(predictions_by_level, output_path):
             axes[idx].set_xlim(0, 100)
             axes[idx].tick_params(axis='both', labelsize=7)
             axes[idx].grid(axis='x', alpha=0.3)
+        else:
+            axes[idx].axis('off')
     
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
     return output_path
 
-def generate_hierarchical_report(smu_id, soil_chars, predictions_by_level, location_info, model_metrics, enable_ai=True):
+def generate_hierarchical_report(
+    smu_id,
+    soil_chars,
+    predictions_by_level,
+    location_info,
+    model_metrics,
+    model_info=None,
+    enable_ai=True,
+):
     """Generate concise one-page professional scientific PDF report"""
     try:
         print("\n" + "="*60)
@@ -146,7 +164,7 @@ def generate_hierarchical_report(smu_id, soil_chars, predictions_by_level, locat
         
         # Tighter margins for one page
         doc = SimpleDocTemplate(output_path, pagesize=letter,
-                              topMargin=0.5*inch, bottomMargin=0.5*inch,
+                              topMargin=0.4*inch, bottomMargin=0.35*inch,
                               leftMargin=0.6*inch, rightMargin=0.6*inch)
         
         styles = getSampleStyleSheet()
@@ -189,10 +207,40 @@ def generate_hierarchical_report(smu_id, soil_chars, predictions_by_level, locat
         
         subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], alignment=TA_CENTER, 
                                        fontSize=9, textColor=colors.HexColor('#666666'))
-        story.append(Paragraph(f"Report Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | "
-                             f"Location: {location_info.get('latitude', 'N/A'):.4f}°N, {location_info.get('longitude', 'N/A'):.4f}°E | "
-                             f"SMU ID: {smu_id}", subtitle_style))
+        story.append(Paragraph(
+            f"Report Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | "
+            f"Location: {_format_coord(location_info.get('latitude'))}°, {_format_coord(location_info.get('longitude'))}° | "
+            f"SMU ID: {smu_id}",
+            subtitle_style
+        ))
         story.append(Spacer(1, 0.1*inch))
+
+        model_name = (model_info or {}).get('model_type', 'Hierarchical model')
+        model_version = (model_info or {}).get('version', 'Unknown')
+        training_samples = (model_info or {}).get('training_samples', 'Unknown')
+        feature_count = len((model_info or {}).get('feature_names', [])) or len(soil_chars)
+
+        summary_table = Table([
+            ['Model', model_name],
+            ['Version', str(model_version)],
+            ['Features', str(feature_count)],
+            ['Training samples', str(training_samples)],
+            ['H3 resolution', str(location_info.get('h3_resolution', 'N/A'))],
+            ['H3 cell', str(location_info.get('h3_cell', 'N/A'))[:32]],
+        ], colWidths=[1.35*inch, 4.85*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#111827')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8fafc')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#d1d5db')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 0.08*inch))
         
         # ============ SOIL CHARACTERISTICS (COMPACT TABLE) ============
         story.append(Paragraph("Soil Characteristics", heading_style))
@@ -238,7 +286,7 @@ def generate_hierarchical_report(smu_id, soil_chars, predictions_by_level, locat
         print("  Creating compact predictions chart...")
         chart_path = "temp_compact_predictions.png"
         create_compact_predictions_chart(predictions_by_level, chart_path)
-        story.append(Image(chart_path, width=6.5*inch, height=2*inch))
+        story.append(Image(chart_path, width=6.5*inch, height=1.75*inch))
         story.append(Spacer(1, 0.08*inch))
         print("  ✓ Chart created")
         
@@ -277,11 +325,11 @@ def generate_hierarchical_report(smu_id, soil_chars, predictions_by_level, locat
         if enable_ai and LLM_AVAILABLE:
             # Get interpretation for genus level (most specific)
             if 'genus' in predictions_by_level and predictions_by_level['genus']:
-                story.append(Paragraph("Scientific Interpretation", heading_style))
                 pred_names = ", ".join([p['name'] for p in predictions_by_level['genus'][:2]])
                 explanation = generate_ai_explanation(soil_chars, pred_names, 'genus')
                 
                 if explanation:
+                    story.append(Paragraph("AI-Generated Hypothesis (not a detection)", heading_style))
                     explanation_style = ParagraphStyle('Explanation', parent=body_style, 
                                                       fontSize=8, alignment=TA_JUSTIFY, leading=10)
                     story.append(Paragraph(explanation, explanation_style))
@@ -290,18 +338,23 @@ def generate_hierarchical_report(smu_id, soil_chars, predictions_by_level, locat
         # ============ MODEL INFO & METHODOLOGY (ULTRA COMPACT) ============
         story.append(Paragraph("Model Info & Methodology", heading_style))
         
-        methodology_text = f"""<b>Model:</b> Random Forest (hierarchical, 5 levels). <b>Data:</b> HWSD v2.0 soil DB (29,538 SMUs) + 
-        GBIF bacteria (96,697 occurrences, India). <b>Features:</b> 13 engineered (8 soil + 2 spatial + 3 derived). 
-        <b>Performance:</b> Phylum F1={model_metrics.get('phylum', {}).get('f1_score', 0):.3f}, 
-        Genus F1={model_metrics.get('genus', {}).get('f1_score', 0):.3f}. <b>Citation:</b> GBIF.org (Oct 2025) 
-        https://doi.org/10.15468/dl.z3ysfj. <b>Disclaimer:</b> Predictions based on soil properties only. 
-        Microbiome influenced by climate, season, land use. For research only."""
+        phylum_f1 = model_metrics.get('phylum', {}).get('weighted_f1', model_metrics.get('phylum', {}).get('f1_score', 0))
+        class_f1 = model_metrics.get('class', {}).get('weighted_f1', model_metrics.get('class', {}).get('f1_score', 0))
+        genus_f1 = model_metrics.get('genus', {}).get('weighted_f1', model_metrics.get('genus', {}).get('f1_score', 0))
+        source_names = ', '.join((model_info or {}).get('source_records', {}).keys()) or (model_info or {}).get('data_source', 'soil and occurrence training records')
+        validation_note = model_info.get('spatial_validation', 'See model metadata for validation protocol.')
+        methodology_text = f"""<b>Model:</b> {model_name} ({model_version}). <b>Data:</b> {source_names}.
+        <b>Features:</b> {feature_count} engineered environmental variables.
+        <b>Performance:</b> Phylum F1={phylum_f1:.3f}, Class F1={class_f1:.3f}, Genus F1={genus_f1:.3f}.
+        <b>Validation:</b> {validation_note}
+        <b>Disclaimer:</b> Predictions are probabilistic and reflect the model training distribution, not ground truth.
+        Microbiome composition also depends on climate, season, land use, and sampling bias."""
         
         story.append(Paragraph(methodology_text, body_style))
         
         # ============ FOOTER ============
-        story.append(Spacer(1, 0.1*inch))
-        footer_text = f"""<i>SPORE v2.0 | © {datetime.now().year} | For research use only | Report ID: {timestamp}</i>"""
+        story.append(Spacer(1, 0.03*inch))
+        footer_text = f"""<i>SPORE v{model_version} | © {datetime.now().year} | For research use only | Report ID: {timestamp}</i>"""
         story.append(Paragraph(footer_text, ParagraphStyle('Footer', parent=body_style, fontSize=7, 
                                                            textColor=colors.grey, alignment=TA_CENTER)))
         

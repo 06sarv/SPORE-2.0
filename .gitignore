@@ -25,3 +25,17 @@ temp_*.png
 
 # Large LLM models
 *.gguf
+
+# Local editor state
+.vscode/
+
+# Junior task scaffolding
+Task_LS.pdf
+SPORE_Junior_Task_Guide.md
+SPORE_Junior_Task_Guide.pdf
+INITIAL_ASSESSMENT_QUESTIONS.md
+ONBOARDING_CHECKLIST.md
+SETUP_GUIDE_FOR_JUNIOR.md
+GITHUB_SETUP_GUIDE.md
+SPORE_Models_Data.zip
+SPORE_Share/

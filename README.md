@@ -10,12 +10,12 @@ Advanced hierarchical machine learning system for predicting soil microbes in **
 - **Dual Input Modes**: 
   - Lat/Lon lookup (automatic soil data retrieval)
   - Manual soil characteristics input
-- **High Accuracy**: F1 scores up to 0.435 (6.5x improvement over baseline)
+- **Model evaluation**: Includes a leakage-controlled random occurrence split; scores are preliminary and do not establish performance in unseen regions
 - **Multi-Level Predictions**: Get predictions at all taxonomic levels simultaneously
-- **Confidence Scores**: High/Medium/Low confidence indicators
+- **Probability bands**: High/Medium/Low labels are raw model-probability bands, not calibrated confidence
 - **Professional PDF Reports**: Comprehensive scientific reports with:
   - Dynamic visualizations
-  - AI-powered explanations using Ollama (Mistral 7B)
+  - Optional local Ollama-generated interpretation, explicitly labeled as a hypothesis
   - Executive summary, soil analysis, methodology sections
   - Professional scientific styling and formatting
 
@@ -23,15 +23,25 @@ Advanced hierarchical machine learning system for predicting soil microbes in **
 
 ## Model Performance
 
-| Taxonomic Level | Classes | F1 Score | Accuracy |
-|----------------|---------|----------|----------|
-| **Phylum** | 21 | **0.435** | 52.6% |
-| **Class** | 33 | **0.336** | 42.3% |
-| **Order** | 74 | **0.209** | 26.8% |
-| **Family** | 125 | **0.173** | 23.2% |
-| **Genus** | 193 | **0.155** | 20.8% |
+### Leakage-controlled v2.1 fixed bundle
 
-**Why hierarchical + XGBoost is better**: Reduces label dimensionality, handles class imbalance, and provides interpretable taxonomic predictions.
+| Taxonomic Level | Classes | Accuracy | Weighted F1 | Macro F1 |
+|----------------|--------:|---------:|------------:|---------:|
+| Phylum | 15 | 58.0% | 0.514 | 0.110 |
+| Class | 23 | 47.8% | 0.413 | 0.082 |
+| Order | 47 | 32.6% | 0.278 | 0.090 |
+| Family | 72 | 29.6% | 0.231 | 0.109 |
+| Genus | 97 | 27.7% | 0.217 | 0.113 |
+
+These metrics are from a random 80/20 split of GBIF occurrences (seed 42), made before joining soil records. Taxon support, median imputation, and scaling are fit on training data only. Soil features use the app's SHARE-weighted shallowest soil layer. XGBoost uses a fixed 250 trees; the held-out set does not control early stopping. The evaluation record is [`evaluation/v2_random_split_train_only_preprocessing.json`](evaluation/v2_random_split_train_only_preprocessing.json), and `models/metadata.json` records the same metrics for the model now loaded by the app.
+
+The split contains 10,672 training and 2,621 validation occurrences after train-only taxon filtering. Macro F1 is much lower than accuracy, showing that performance is uneven across labels. This remains a random split, so it does not measure transfer to unseen regions or studies. The prior v2 scores (52.6%, 42.3%, 26.8%, 23.2%, and 20.8% accuracy) came from a leaky evaluation and are retained only as historical context.
+
+### Synthetic controlled benchmark
+
+Run `python3 synthetic_demo.py` to generate 6,000 simulated records and compare Random Forest, XGBoost, and a majority-class baseline on a random split and three held-out regions. The generator plants soil-profile/taxon relationships, adds 6% label noise and 1% missingness per soil feature, and groups genera into a consistent taxonomy. For genus prediction on held-out regions, this run produced 91.9% accuracy for Random Forest, 91.1% for XGBoost, and 3.0% for the majority baseline.
+
+These high scores are expected because the synthetic labels were generated from soil profiles. They demonstrate controlled pipeline behavior only; **they are not real microbial prediction scores and must not be compared directly with the GBIF results**.
 
 ---
 
@@ -42,15 +52,9 @@ Advanced hierarchical machine learning system for predicting soil microbes in **
 pip install -r requirements.txt
 ```
 
-### 2. Train Models (First Time Only)
-```bash
-python3 train_model.py
-```
-This will:
-- Link 79,648 bacteria occurrences to soil data
-- Train hierarchical models at 5 taxonomic levels
-- Save models to `models/` directory
-- Takes ~5-10 minutes
+### 2. Model training scripts
+
+The checked-in v2 model metadata and saved model objects identify the bundle as **XGBoost**. `train_model.py` is a separate legacy **Random Forest** pipeline; `train_model_fast.py` is the v2 XGBoost trainer, whose historical random-split evaluation has the limitations described above. For a controlled code demonstration, run `python3 synthetic_demo.py`. For new real-data model claims, use the v3 source-aware pipeline and validate on held-out studies or regions before promoting its artifacts.
 
 ### 3. Setup Ollama (Optional - for AI explanations)
 ```bash
@@ -71,6 +75,10 @@ python3 app.py
 Open: http://localhost:5002
 
 **Note**: Predictions are currently available for locations within India only.
+
+**Local smoke test**: try latitude `22.793497`, longitude `73.62895`, or manual soil values `COARSE=10`, `SAND=35`, `SILT=35`, `CLAY=30`, `ORG_CARBON=12`, `PH_WATER=6.8`, `CEC_CLAY=25`, `BULK=1.3`.
+
+Ollama report text is generated locally, but it may still make unsupported ecological claims despite the cautious prompt. Treat it as unverified text, not scientific evidence. Reports remain available without Ollama when the AI option is disabled.
 
 ---
 
@@ -161,7 +169,7 @@ SPORE/
 2. **Taxonomy Extraction**: Parse hierarchical taxonomy from GBIF data
 3. **Spatial Linking**: Link bacteria coordinates to soil SMU_IDs via raster
 4. **Feature Engineering**: Create 13 features (8 soil + 2 spatial + 3 derived)
-5. **Hierarchical Training**: Train separate Random Forest models for each taxonomic level
+5. **Hierarchical Training**: Train separate XGBoost models for each taxonomic level
 6. **Evaluation**: Calculate F1 scores and accuracy metrics
 7. **Model Saving**: Persist all models and metadata
 
@@ -190,22 +198,21 @@ SPORE/
 - Flexible for different use cases and data availability
 
 ### Advanced ML
-- Random Forest classifiers (100 trees each)
-- Balanced class weights for imbalanced data
-- Spatial autocorrelation via lat/lon features
-- Feature engineering (ratios, texture index)
-
+- XGBoost classifiers with optimized hyperparameters
+- Feature engineering (15 features: 8 soil + derived ratios + spatial bins)
+- Early stopping to prevent overfitting
+- Stratified train/test split
 ---
 
 ## Feature Importance
 
 Top features across all models:
 
-1. **Longitude** (21.3%) - Geographic location
-2. **Latitude** (19.6%) - Geographic location  
-3. **Organic Carbon** (6.6%) - Nutrient availability
-4. **CEC of Clay** (6.1%) - Nutrient retention
-5. **Bulk Density** (5.9%) - Soil structure
+1. **pH Squared** - Non-linear pH effects
+2. **Carbon-pH Interaction** - Nutrient-pH relationship
+3. **Organic Carbon** - Nutrient availability
+4. **Sand/Clay Ratio** - Soil texture
+5. **Latitude Bin** - Geographic patterns
 
 ---
 
